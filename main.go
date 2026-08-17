@@ -306,24 +306,22 @@ func createDiary(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if diary.PlanID == "" || diary.Date == "" || diary.Title == "" {
-		writeError(w, http.StatusBadRequest, "计划ID、日期和标题为必填项")
+	dbMutex.Lock()
+	defer dbMutex.Unlock()
+
+	created, err := prepareDiaryForCreate(diary, db.Plans, time.Now())
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	diary.ID = generateID()
-	diary.CreatedAt = time.Now().Format(time.RFC3339)
-	diary.UpdatedAt = diary.CreatedAt
-	if diary.Images == nil {
-		diary.Images = []string{}
+	db.Diaries = append(db.Diaries, created)
+	if err := saveDBLocked(); err != nil {
+		writeError(w, http.StatusInternalServerError, "保存游记失败")
+		return
 	}
 
-	dbMutex.Lock()
-	db.Diaries = append(db.Diaries, diary)
-	saveDBLocked()
-	dbMutex.Unlock()
-
-	writeJSON(w, http.StatusCreated, diary)
+	writeJSON(w, http.StatusCreated, created)
 }
 
 func listDiaries(w http.ResponseWriter, r *http.Request) {
