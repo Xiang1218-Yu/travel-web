@@ -470,59 +470,8 @@ func uploadImage(w http.ResponseWriter, r *http.Request) {
 func getMapMarkers(w http.ResponseWriter, r *http.Request) {
 	dbMutex.RLock()
 	defer dbMutex.RUnlock()
-
 	onlyPublic := r.URL.Query().Get("public") == "true"
-	type Marker struct {
-		ID        string  `json:"id"`
-		Type      string  `json:"type"`
-		PlanID    string  `json:"plan_id"`
-		Title     string  `json:"title"`
-		Latitude  float64 `json:"latitude"`
-		Longitude float64 `json:"longitude"`
-		Date      string  `json:"date"`
-	}
-
-	markers := []Marker{}
-	for _, p := range db.Plans {
-		if onlyPublic && !p.IsPublic {
-			continue
-		}
-		if p.Location.Latitude != 0 || p.Location.Longitude != 0 {
-			markers = append(markers, Marker{
-				ID:        "plan-" + p.ID,
-				Type:      "plan",
-				PlanID:    p.ID,
-				Title:     p.Title,
-				Latitude:  p.Location.Latitude,
-				Longitude: p.Location.Longitude,
-				Date:      p.StartDate,
-			})
-		}
-	}
-
-	planPublicMap := map[string]bool{}
-	for _, p := range db.Plans {
-		planPublicMap[p.ID] = p.IsPublic
-	}
-
-	for _, d := range db.Diaries {
-		if onlyPublic && !planPublicMap[d.PlanID] {
-			continue
-		}
-		if d.Location.Latitude != 0 || d.Location.Longitude != 0 {
-			markers = append(markers, Marker{
-				ID:        "diary-" + d.ID,
-				Type:      "diary",
-				PlanID:    d.PlanID,
-				Title:     d.Title,
-				Latitude:  d.Location.Latitude,
-				Longitude: d.Location.Longitude,
-				Date:      d.Date,
-			})
-		}
-	}
-
-	writeJSON(w, http.StatusOK, markers)
+	writeJSON(w, http.StatusOK, collectMapMarkers(db.Plans, db.Diaries, onlyPublic))
 }
 
 // ==================== 路由分发 ====================
