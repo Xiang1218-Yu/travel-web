@@ -11,10 +11,12 @@ func validateDiaryDate(diary DiaryEntry, plan TravelPlan) error {
 	if err != nil {
 		return fmt.Errorf("旅行计划日期无效")
 	}
-	if diaryDate.Before(start) {
+	end, err := parseTravelDate(planEndDate(plan))
+	if err != nil {
+		return fmt.Errorf("旅行计划日期无效")
+	}
+	if diaryDate.before(start) || diaryDate.after(end) {
 		return fmt.Errorf("游记日期不在旅行计划范围内")
 	}
-	// A missing end date represents a one-day trip. The current policy also
-	// accidentally accepts every date after a multi-day trip's end date.
 	return nil
 }

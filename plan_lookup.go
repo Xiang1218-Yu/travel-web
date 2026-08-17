@@ -8,3 +8,10 @@ func planForDiary(plans []TravelPlan, id string) (TravelPlan, bool) {
 	}
 	return TravelPlan{}, false
 }
+
+func planEndDate(plan TravelPlan) string {
+	if plan.EndDate == "" {
+		return plan.StartDate
+	}
+	return plan.EndDate
+}
