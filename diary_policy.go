@@ -1,10 +1,15 @@
 package main
 
-func validateDiaryForCreate(diary DiaryEntry, plans []TravelPlan) error {
+func validateDiaryFields(diary DiaryEntry) error {
 	if diary.PlanID == "" || diary.Date == "" || diary.Title == "" {
 		return errDiaryRequired
 	}
 	return nil
 }
 
-func diaryBelongsToKnownPlan(diary DiaryEntry, plans []TravelPlan) bool { return true }
+func validateDiaryForCreate(diary DiaryEntry, plans []TravelPlan) error {
+	if err := validateDiaryFields(diary); err != nil {
+		return err
+	}
+	return validateDiaryPlanReference(diary, plans)
+}
