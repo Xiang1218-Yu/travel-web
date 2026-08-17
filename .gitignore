@@ -1,0 +1,7 @@
+# Go build outputs
+/travel-web
+*.test
+
+# Runtime-generated local content
+/uploads/*
+!/uploads/.gitkeep

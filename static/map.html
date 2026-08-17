@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>足迹地图 - 旅行日记</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+  <link rel="stylesheet" href="/static/css/style.css">
+  <style>
+    .legend {
+      background: white;
+      padding: 10px 12px;
+      border-radius: 8px;
+      box-shadow: 0 1px 5px rgba(0,0,0,0.2);
+      font-size: 13px;
+      line-height: 1.8;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .legend-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      border: 2px solid white;
+      box-shadow: 0 0 0 1px #ccc;
+    }
+    .legend-dot.plan { background: #2563eb; }
+    .legend-dot.diary { background: #db2777; }
+    .marker-cluster {
+      background: var(--primary) !important;
+      color: white !important;
+      border: 3px solid white !important;
+    }
+    .map-toolbar {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      z-index: 500;
+      background: white;
+      border-radius: 8px;
+      padding: 10px 12px;
+      box-shadow: 0 1px 5px rgba(0,0,0,0.2);
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      max-width: 380px;
+    }
+    .map-toolbar .toggle-wrapper { gap: 0.4rem; }
+    .map-toolbar label { font-size: 0.85rem; font-weight: 500; }
+    .map-toolbar select {
+      padding: 0.35rem 0.6rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 0.85rem;
+    }
+  </style>
+</head>
+<body>
+  <nav class="navbar">
+    <div class="navbar-inner">
+      <div class="logo"><span class="logo-icon">🧳</span>旅行日记</div>
+      <ul class="nav-links">
+        <li><a href="/" data-page="home">首页</a></li>
+        <li><a href="/plans" data-page="plans">旅行计划</a></li>
+        <li><a href="/diary" data-page="diary">游记记录</a></li>
+        <li><a href="/map" data-page="map">足迹地图</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <div class="container" style="position:relative;">
+    <div class="page-header">
+      <div>
+        <h1 class="page-title">🗺️ 足迹地图</h1>
+        <p class="page-subtitle">在地图上查看你所有到访过的地点和旅行足迹</p>
+      </div>
+      <div class="btn-group">
+        <span class="badge badge-plan" style="padding:0.5rem 0.8rem;">🏖️ 计划 <span id="count-plan">0</span></span>
+        <span class="badge badge-diary" style="padding:0.5rem 0.8rem;">📸 游记 <span id="count-diary">0</span></span>
+      </div>
+    </div>
+
+    <div style="position:relative;">
+      <div id="map"></div>
+      <div class="map-toolbar">
+        <div style="display:flex;align-items:center;gap:0.35rem;">
+          <span style="width:12px;height:12px;border-radius:50%;background:#2563eb;display:inline-block;border:2px solid #fff;box-shadow:0 0 0 1px #ccc;"></span>
+          <label class="toggle-wrapper">
+            <label class="toggle-switch">
+              <input type="checkbox" id="show-plans" checked>
+              <span class="toggle-slider"></span>
+            </label>
+            <span>计划</span>
+          </label>
+        </div>
+        <div style="display:flex;align-items:center;gap:0.35rem;">
+          <span style="width:12px;height:12px;border-radius:50%;background:#db2777;display:inline-block;border:2px solid #fff;box-shadow:0 0 0 1px #ccc;"></span>
+          <label class="toggle-wrapper">
+            <label class="toggle-switch">
+              <input type="checkbox" id="show-diaries" checked>
+              <span class="toggle-slider"></span>
+            </label>
+            <span>游记</span>
+          </label>
+        </div>
+        <div style="display:flex;align-items:center;gap:0.35rem;">
+          <label class="toggle-wrapper">
+            <label class="toggle-switch">
+              <input type="checkbox" id="only-public">
+              <span class="toggle-slider"></span>
+            </label>
+            <span>仅公开</span>
+          </label>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script src="/static/js/common.js"></script>
+  <script>
+    setActiveNav('map');
+
+    const map = L.map('map', {
+      center: [30, 105],
+      zoom: 4,
+      worldCopyJump: true
+    });
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      maxZoom: 19
+    }).addTo(map);
+
+    const legend = L.control({ position: 'bottomright' });
+    legend.onAdd = function() {
+      const div = L.DomUtil.create('div', 'legend');
+      div.innerHTML = `
+        <div class="legend-item"><span class="legend-dot plan"></span> 旅行计划目的地</div>
+        <div class="legend-item"><span class="legend-dot diary"></span> 游记记录地点</div>
+      `;
+      return div;
+    };
+    legend.addTo(map);
+
+    const planLayer = L.layerGroup().addTo(map);
+    const diaryLayer = L.layerGroup().addTo(map);
+    let allMarkers = [];
+
+    function createPlanIcon() {
+      return L.divIcon({
+        className: '',
+        html: `<div style="
+          background: #2563eb;
+          width: 28px;
+          height: 28px;
+          border-radius: 50%;
+          border: 3px solid white;
+          box-shadow: 0 2px 8px rgba(37,99,235,0.5);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: white;
+          font-size: 13px;
+        ">🏖️</div>`,
+        iconSize: [28, 28],
+        iconAnchor: [14, 14],
+        popupAnchor: [0, -16]
+      });
+    }
+
+    function createDiaryIcon() {
+      return L.divIcon({
+        className: '',
+        html: `<div style="
+          background: #db2777;
+          width: 26px;
+          height: 26px;
+          border-radius: 50%;
+          border: 3px solid white;
+          box-shadow: 0 2px 8px rgba(219,39,119,0.5);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: white;
+          font-size: 12px;
+        ">📸</div>`,
+        iconSize: [26, 26],
+        iconAnchor: [13, 13],
+        popupAnchor: [0, -15]
+      });
+    }
+
+    async function loadMarkers() {
+      try {
+        const onlyPublic = document.getElementById('only-public').checked;
+        const url = onlyPublic ? '/api/markers?public=true' : '/api/markers';
+        const markers = await API.get(url);
+        allMarkers = markers;
+        renderMarkers();
+      } catch (e) {
+        showToast('加载标记失败: ' + e.message, 'error');
+      }
+    }
+
+    function renderMarkers() {
+      planLayer.clearLayers();
+      diaryLayer.clearLayers();
+
+      let planCount = 0, diaryCount = 0;
+      const showPlans = document.getElementById('show-plans').checked;
+      const showDiaries = document.getElementById('show-diaries').checked;
+      const bounds = [];
+
+      allMarkers.forEach(m => {
+        if ((m.type === 'plan' && !showPlans) || (m.type === 'diary' && !showDiaries)) return;
+        if (m.latitude === 0 && m.longitude === 0) return;
+
+        if (m.type === 'plan') planCount++;
+        else diaryCount++;
+
+        const popupHtml = `
+          <div style="min-width:160px;">
+            <div class="popup-title">${escapeHtml(m.title)}</div>
+            <div class="popup-date">
+              <span class="badge ${m.type === 'plan' ? 'badge-plan' : 'badge-diary'}">
+                ${m.type === 'plan' ? '🏖️ 旅行计划' : '📸 游记'}
+              </span>
+            </div>
+            <div class="popup-date">📅 ${formatDate(m.date)}</div>
+            <div class="popup-date">
+              🌍 ${m.latitude.toFixed(4)}, ${m.longitude.toFixed(4)}
+            </div>
+            <a href="/plans" class="popup-link">查看详情 →</a>
+          </div>
+        `;
+
+        const marker = L.marker([m.latitude, m.longitude], {
+          icon: m.type === 'plan' ? createPlanIcon() : createDiaryIcon(),
+          title: m.title
+        }).bindPopup(popupHtml);
+
+        if (m.type === 'plan') marker.addTo(planLayer);
+        else marker.addTo(diaryLayer);
+
+        bounds.push([m.latitude, m.longitude]);
+      });
+
+      document.getElementById('count-plan').textContent = planCount;
+      document.getElementById('count-diary').textContent = diaryCount;
+
+      if (bounds.length > 0) {
+        map.fitBounds(bounds, { padding: [50, 50] });
+      }
+    }
+
+    document.getElementById('show-plans').addEventListener('change', renderMarkers);
+    document.getElementById('show-diaries').addEventListener('change', renderMarkers);
+    document.getElementById('only-public').addEventListener('change', loadMarkers);
+
+    loadMarkers();
+  </script>
+</body>
+</html>

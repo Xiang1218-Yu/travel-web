@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>旅行日记 - 记录每一段美好旅程</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <nav class="navbar">
+    <div class="navbar-inner">
+      <div class="logo"><span class="logo-icon">🧳</span>旅行日记</div>
+      <ul class="nav-links">
+        <li><a href="/" data-page="home">首页</a></li>
+        <li><a href="/plans" data-page="plans">旅行计划</a></li>
+        <li><a href="/diary" data-page="diary">游记记录</a></li>
+        <li><a href="/map" data-page="map">足迹地图</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <div class="container">
+    <div class="hero">
+      <h1>✈️ 记录每一段美好旅程</h1>
+      <p>创建旅行计划、记录每日游记、在地图上标记你的足迹，让每一次出行都成为难忘的回忆</p>
+      <div class="btn-group" style="justify-content: center;">
+        <a href="/plans" class="btn btn-primary">📝 开始创建计划</a>
+        <a href="/map" class="btn btn-success" style="background:#10b981;">🗺️ 查看足迹地图</a>
+      </div>
+    </div>
+
+    <div class="stats">
+      <div class="stat-card">
+        <div class="stat-value" id="stat-plans">0</div>
+        <div class="stat-label">旅行计划</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="stat-diaries">0</div>
+        <div class="stat-label">游记记录</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="stat-public">0</div>
+        <div class="stat-label">公开分享</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="stat-markers">0</div>
+        <div class="stat-label">地图标记</div>
+      </div>
+    </div>
+
+    <div class="page-header">
+      <div>
+        <h2 class="page-title">🌟 最近的旅行计划</h2>
+        <p class="page-subtitle">查看和管理你创建的旅行计划</p>
+      </div>
+      <a href="/plans" class="btn btn-outline">查看全部 →</a>
+    </div>
+
+    <div class="grid grid-cols-2" id="recent-plans"></div>
+  </div>
+
+  <script src="/static/js/common.js"></script>
+  <script>
+    setActiveNav('home');
+
+    async function loadStats() {
+      try {
+        const [plans, diaries, markers] = await Promise.all([
+          API.get('/api/plans'),
+          API.get('/api/diaries'),
+          API.get('/api/markers')
+        ]);
+        document.getElementById('stat-plans').textContent = plans.length;
+        document.getElementById('stat-diaries').textContent = diaries.length;
+        document.getElementById('stat-public').textContent = plans.filter(p => p.is_public).length;
+        document.getElementById('stat-markers').textContent = markers.length;
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    async function loadRecentPlans() {
+      try {
+        const plans = await API.get('/api/plans');
+        const container = document.getElementById('recent-plans');
+        const recent = plans.slice(0, 4);
+
+        if (recent.length === 0) {
+          container.innerHTML = `
+            <div class="card" style="grid-column: 1/-1;">
+              <div class="empty-state">
+                <div class="empty-state-icon">🗺️</div>
+                <h3>还没有旅行计划</h3>
+                <p style="margin: 0.5rem 0 1rem;">开始规划你的第一次旅行吧！</p>
+                <a href="/plans" class="btn btn-primary">创建旅行计划</a>
+              </div>
+            </div>`;
+          return;
+        }
+
+        container.innerHTML = recent.map(p => `
+          <div class="card">
+            <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:0.5rem;">
+              <h3 class="card-title" style="margin:0;">${escapeHtml(p.title)}</h3>
+              <span class="badge ${p.is_public ? 'badge-public' : 'badge-private'}">
+                ${p.is_public ? '🌐 公开' : '🔒 私有'}
+              </span>
+            </div>
+            <div class="meta">
+              <span class="meta-item">📍 ${escapeHtml(p.destination)}</span>
+              <span class="meta-item">📅 ${formatDate(p.start_date)}${p.end_date ? ' ~ ' + formatDate(p.end_date) : ''}</span>
+            </div>
+            ${p.itinerary && p.itinerary.length > 0 ? `
+              <ul class="itinerary-list">
+                ${p.itinerary.slice(0, 3).map(i => `
+                  <li>
+                    <span class="itinerary-time">${escapeHtml(i.time)}</span>
+                    <span>${escapeHtml(i.activity)}</span>
+                  </li>
+                `).join('')}
+              </ul>
+            ` : '<p style="color:var(--text-light);font-size:0.9rem;">暂无行程安排</p>'}
+            <div class="card-actions">
+              <a href="/plans" class="btn btn-sm btn-outline">查看详情</a>
+            </div>
+          </div>
+        `).join('');
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    loadStats();
+    loadRecentPlans();
+  </script>
+</body>
+</html>

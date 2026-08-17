@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>游记记录 - 旅行日记</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <nav class="navbar">
+    <div class="navbar-inner">
+      <div class="logo"><span class="logo-icon">🧳</span>旅行日记</div>
+      <ul class="nav-links">
+        <li><a href="/" data-page="home">首页</a></li>
+        <li><a href="/plans" data-page="plans">旅行计划</a></li>
+        <li><a href="/diary" data-page="diary">游记记录</a></li>
+        <li><a href="/map" data-page="map">足迹地图</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <div class="container">
+    <div class="page-header">
+      <div>
+        <h1 class="page-title">📖 游记记录</h1>
+        <p class="page-subtitle">用文字和图片记录旅途中的每一个精彩瞬间</p>
+      </div>
+      <button class="btn btn-primary" onclick="openDiaryModal()">➕ 新建游记</button>
+    </div>
+
+    <div class="toolbar">
+      <div class="form-group">
+        <label class="form-label">🧳 关联旅行计划</label>
+        <select class="form-select" id="filter-plan">
+          <option value="">全部计划</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">📅 按日期筛选</label>
+        <input type="month" class="form-input" id="filter-month">
+      </div>
+      <div class="btn-group">
+        <button class="btn btn-outline" onclick="resetFilters()">重置</button>
+      </div>
+    </div>
+
+    <div id="diaries-list"></div>
+  </div>
+
+  <script src="/static/js/common.js"></script>
+  <script>
+    setActiveNav('diary');
+    let plans = [];
+    let currentDiaries = [];
+    let uploadedImages = [];
+
+    async function loadPlans() {
+      plans = await API.get('/api/plans');
+      const select = document.getElementById('filter-plan');
+      select.innerHTML = '<option value="">全部计划</option>' +
+        plans.map(p => `<option value="${p.id}">${escapeHtml(p.title)}</option>`).join('');
+    }
+
+    async function loadDiaries() {
+      try {
+        const planId = document.getElementById('filter-plan').value;
+        const month = document.getElementById('filter-month').value;
+
+        let url = '/api/diaries?';
+        if (planId) url += `plan_id=${planId}&`;
+        if (month) url += `date=${month}&`;
+
+        currentDiaries = await API.get(url);
+        renderDiaries(currentDiaries);
+      } catch (e) {
+        showToast('加载失败: ' + e.message, 'error');
+      }
+    }
+
+    function renderDiaries(diaries) {
+      const container = document.getElementById('diaries-list');
+
+      if (diaries.length === 0) {
+        container.innerHTML = `
+          <div class="card">
+            <div class="empty-state">
+              <div class="empty-state-icon">📖</div>
+              <h3>暂无游记记录</h3>
+              <p style="margin: 0.5rem 0 1rem;">开始记录你旅途中的美好瞬间吧！</p>
+              <button class="btn btn-primary" onclick="openDiaryModal()">写一篇游记</button>
+            </div>
+          </div>`;
+        return;
+      }
+
+      container.innerHTML = diaries.map(d => {
+        const plan = plans.find(p => p.id === d.plan_id);
+        return `
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:start;flex-wrap:wrap;gap:0.5rem;">
+            <div>
+              <h3 class="card-title" style="margin:0;">${escapeHtml(d.title)}</h3>
+              <div class="meta" style="margin-top:0.5rem;">
+                <span class="meta-item">📅 ${formatDate(d.date)}</span>
+                ${plan ? `<span class="meta-item">🧳 ${escapeHtml(plan.title)}</span>` : ''}
+                ${d.location.name ? `<span class="meta-item">📍 ${escapeHtml(d.location.name)}</span>` : ''}
+              </div>
+            </div>
+            ${plan ? `<span class="badge badge-plan">计划关联</span>` : ''}
+          </div>
+          ${d.content ? `<div style="margin-top:1rem;white-space:pre-wrap;line-height:1.8;">${escapeHtml(d.content)}</div>` : ''}
+          ${d.images && d.images.length > 0 ? `
+            <div class="image-grid">
+              ${d.images.map(img => `<img src="/uploads/${img}" onclick="window.open('/uploads/${img}','_blank')" alt="游记图片">`).join('')}
+            </div>
+          ` : ''}
+          <div class="card-actions">
+            <button class="btn btn-sm btn-primary" onclick="openDiaryModal('${d.id}')">✏️ 编辑</button>
+            <button class="btn btn-sm btn-danger" onclick="deleteDiary('${d.id}')">🗑️ 删除</button>
+          </div>
+        </div>
+      `;
+      }).join('');
+    }
+
+    function openDiaryModal(diaryId) {
+      const diary = diaryId ? currentDiaries.find(d => d.id === diaryId) : null;
+      uploadedImages = diary?.images ? [...diary.images] : [];
+      const isEdit = !!diary;
+      const title = diary ? '编辑游记' : '新建游记';
+
+      const plansOptions = plans.map(p =>
+        `<option value="${p.id}" ${diary?.plan_id === p.id ? 'selected' : ''}>${escapeHtml(p.title)}</option>`
+      ).join('');
+
+      const imagesHtml = uploadedImages.length > 0 ? `
+        <div class="image-grid" style="margin-top:0;">
+          ${uploadedImages.map((img, idx) => `
+            <div style="position:relative;">
+              <img src="/uploads/${img}" alt="">
+              <button type="button" style="position:absolute;top:-4px;right:-4px;background:var(--danger);color:white;border:none;border-radius:50%;width:24px;height:24px;cursor:pointer;" onclick="removeUploadedImage(${idx}, this)">×</button>
+            </div>
+          `).join('')}
+        </div>
+      ` : '';
+
+      const modal = openModal(`
+        <div class="modal" style="max-width:700px;">
+          <div class="modal-header">
+            <h3 class="modal-title">${title}</h3>
+            <button class="modal-close" data-close-modal>×</button>
+          </div>
+          <div class="modal-body">
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">📝 游记标题 *</label>
+                <input type="text" class="form-input" id="diary-title" value="${escapeHtml(diary?.title || '')}" placeholder="例如：京都的古都漫步">
+              </div>
+              <div class="form-group">
+                <label class="form-label">📅 记录日期 *</label>
+                <input type="date" class="form-input" id="diary-date" value="${diary?.date || new Date().toISOString().slice(0,10)}">
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">🧳 关联旅行计划</label>
+              <select class="form-select" id="diary-plan">
+                <option value="">-- 不关联 --</option>
+                ${plansOptions}
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">✍️ 游记内容</label>
+              <textarea class="form-textarea" id="diary-content" style="min-height:150px;" placeholder="记录今天的美好时光...">${escapeHtml(diary?.content || '')}</textarea>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">📍 地点名称</label>
+                <input type="text" class="form-input" id="diary-loc-name" value="${escapeHtml(diary?.location?.name || '')}" placeholder="例如：金阁寺">
+              </div>
+              <div class="form-group"></div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">🌐 纬度</label>
+                <input type="number" step="0.0001" class="form-input" id="diary-lat" value="${diary?.location?.latitude || ''}" placeholder="例如：35.0394">
+              </div>
+              <div class="form-group">
+                <label class="form-label">🌐 经度</label>
+                <input type="number" step="0.0001" class="form-input" id="diary-lng" value="${diary?.location?.longitude || ''}" placeholder="例如：135.7292">
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">🖼️ 上传图片</label>
+              <div id="current-images">${imagesHtml}</div>
+              <div class="upload-area" id="upload-zone" style="margin-top:0.75rem;">
+                <div style="font-size:2rem;margin-bottom:0.5rem;">📷</div>
+                <div>点击此处或拖拽图片到此处上传</div>
+                <div style="font-size:0.85rem;color:var(--text-light);margin-top:0.25rem;">支持 JPG / PNG / GIF / WebP，最大 50MB</div>
+              </div>
+              <input type="file" id="image-input" accept="image/*" multiple style="display:none;">
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-outline" data-close-modal>取消</button>
+            <button class="btn btn-primary" onclick="saveDiary('${diaryId || ''}')">保存</button>
+          </div>
+        </div>
+      `);
+
+      const uploadZone = modal.querySelector('#upload-zone');
+      const fileInput = modal.querySelector('#image-input');
+
+      uploadZone.addEventListener('click', () => fileInput.click());
+      uploadZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        uploadZone.classList.add('dragover');
+      });
+      uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('dragover'));
+      uploadZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        uploadZone.classList.remove('dragover');
+        handleImageUpload(e.dataTransfer.files);
+      });
+      fileInput.addEventListener('change', (e) => handleImageUpload(e.target.files));
+    }
+
+    async function handleImageUpload(files) {
+      for (const file of files) {
+        if (!file.type.startsWith('image/')) continue;
+        try {
+          const result = await API.uploadImage(file);
+          uploadedImages.push(result.filename);
+          refreshImagePreview();
+          showToast('图片上传成功');
+        } catch (e) {
+          showToast('上传失败: ' + e.message, 'error');
+        }
+      }
+    }
+
+    function removeUploadedImage(index, btn) {
+      uploadedImages.splice(index, 1);
+      refreshImagePreview();
+    }
+
+    function refreshImagePreview() {
+      const container = document.getElementById('current-images');
+      if (!container) return;
+      if (uploadedImages.length === 0) {
+        container.innerHTML = '';
+        return;
+      }
+      container.innerHTML = `
+        <div class="image-grid" style="margin-top:0;">
+          ${uploadedImages.map((img, idx) => `
+            <div style="position:relative;">
+              <img src="/uploads/${img}" alt="">
+              <button type="button" style="position:absolute;top:-4px;right:-4px;background:var(--danger);color:white;border:none;border-radius:50%;width:24px;height:24px;cursor:pointer;" onclick="removeUploadedImage(${idx}, this)">×</button>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    }
+
+    async function saveDiary(diaryId) {
+      const title = document.getElementById('diary-title').value.trim();
+      const date = document.getElementById('diary-date').value;
+      const planId = document.getElementById('diary-plan').value;
+      const content = document.getElementById('diary-content').value.trim();
+      const locName = document.getElementById('diary-loc-name').value.trim();
+      const lat = parseFloat(document.getElementById('diary-lat').value) || 0;
+      const lng = parseFloat(document.getElementById('diary-lng').value) || 0;
+
+      if (!title || !date) {
+        showToast('请填写必填项（标题、日期）', 'error');
+        return;
+      }
+      if (!planId) {
+        showToast('请选择关联的旅行计划', 'error');
+        return;
+      }
+
+      const data = {
+        plan_id: planId, date, title, content,
+        images: uploadedImages,
+        location: { name: locName, latitude: lat, longitude: lng }
+      };
+
+      try {
+        if (diaryId) {
+          await API.put(`/api/diaries/${diaryId}`, data);
+          showToast('更新成功');
+        } else {
+          await API.post('/api/diaries', data);
+          showToast('创建成功');
+        }
+        closeModal();
+        loadDiaries();
+      } catch (e) {
+        showToast('保存失败: ' + e.message, 'error');
+      }
+    }
+
+    async function deleteDiary(id) {
+      if (!confirm('确定要删除这篇游记吗？此操作不可恢复。')) return;
+      try {
+        await API.delete(`/api/diaries/${id}`);
+        showToast('删除成功');
+        loadDiaries();
+      } catch (e) {
+        showToast('删除失败: ' + e.message, 'error');
+      }
+    }
+
+    function resetFilters() {
+      document.getElementById('filter-plan').value = '';
+      document.getElementById('filter-month').value = '';
+      loadDiaries();
+    }
+
+    document.getElementById('filter-plan').addEventListener('change', loadDiaries);
+    document.getElementById('filter-month').addEventListener('change', loadDiaries);
+
+    loadPlans().then(loadDiaries);
+  </script>
+</body>
+</html>

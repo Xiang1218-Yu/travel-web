@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>旅行计划 - 旅行日记</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <nav class="navbar">
+    <div class="navbar-inner">
+      <div class="logo"><span class="logo-icon">🧳</span>旅行日记</div>
+      <ul class="nav-links">
+        <li><a href="/" data-page="home">首页</a></li>
+        <li><a href="/plans" data-page="plans">旅行计划</a></li>
+        <li><a href="/diary" data-page="diary">游记记录</a></li>
+        <li><a href="/map" data-page="map">足迹地图</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <div class="container">
+    <div class="page-header">
+      <div>
+        <h1 class="page-title">🗓️ 旅行计划管理</h1>
+        <p class="page-subtitle">创建和管理你的旅行计划，安排每一个精彩的行程</p>
+      </div>
+      <button class="btn btn-primary" onclick="openPlanModal()">➕ 新建旅行计划</button>
+    </div>
+
+    <div class="toolbar">
+      <div class="form-group">
+        <label class="form-label">🔍 搜索目的地</label>
+        <input type="text" class="form-input" id="search-dest" placeholder="输入目的地名称...">
+      </div>
+      <div class="form-group">
+        <label class="form-label">📅 按日期筛选</label>
+        <input type="date" class="form-input" id="search-date">
+      </div>
+      <div class="form-group" style="min-width:auto;">
+        <label class="form-label">👁️ 显示范围</label>
+        <select class="form-select" id="filter-scope">
+          <option value="all">全部计划</option>
+          <option value="public">仅公开</option>
+          <option value="private">仅私有</option>
+        </select>
+      </div>
+      <div class="btn-group">
+        <button class="btn btn-outline" onclick="resetFilters()">重置</button>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-2" id="plans-list"></div>
+  </div>
+
+  <script src="/static/js/common.js"></script>
+  <script>
+    setActiveNav('plans');
+    let currentPlans = [];
+
+    async function loadPlans() {
+      try {
+        const dest = document.getElementById('search-dest').value;
+        const date = document.getElementById('search-date').value;
+        const scope = document.getElementById('filter-scope').value;
+
+        let url = '/api/plans?';
+        if (dest) url += `destination=${encodeURIComponent(dest)}&`;
+        if (date) url += `date=${date}&`;
+        if (scope === 'public') url += 'public=true&';
+
+        let plans = await API.get(url);
+        if (scope === 'private') {
+          plans = plans.filter(p => !p.is_public);
+        }
+
+        currentPlans = plans;
+        renderPlans(plans);
+      } catch (e) {
+        showToast('加载失败: ' + e.message, 'error');
+      }
+    }
+
+    function renderPlans(plans) {
+      const container = document.getElementById('plans-list');
+
+      if (plans.length === 0) {
+        container.innerHTML = `
+          <div class="card" style="grid-column: 1/-1;">
+            <div class="empty-state">
+              <div class="empty-state-icon">🗺️</div>
+              <h3>暂无旅行计划</h3>
+              <p style="margin: 0.5rem 0 1rem;">点击右上角按钮开始创建吧！</p>
+              <button class="btn btn-primary" onclick="openPlanModal()">创建旅行计划</button>
+            </div>
+          </div>`;
+        return;
+      }
+
+      container.innerHTML = plans.map(p => `
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:0.5rem;">
+            <h3 class="card-title" style="margin:0;">${escapeHtml(p.title)}</h3>
+            <span class="badge ${p.is_public ? 'badge-public' : 'badge-private'}">
+              ${p.is_public ? '🌐 公开' : '🔒 私有'}
+            </span>
+          </div>
+          <div class="meta">
+            <span class="meta-item">📍 ${escapeHtml(p.destination)}</span>
+            <span class="meta-item">📅 ${formatDate(p.start_date)}${p.end_date ? ' ~ ' + formatDate(p.end_date) : ''}</span>
+          </div>
+          ${p.location.latitude || p.location.longitude ? `
+            <div class="meta">
+              <span class="meta-item">🌍 坐标: ${p.location.latitude.toFixed(4)}, ${p.location.longitude.toFixed(4)}</span>
+            </div>
+          ` : ''}
+          ${p.itinerary && p.itinerary.length > 0 ? `
+            <div style="margin-top: 0.75rem;">
+              <strong style="font-size: 0.9rem;">行程安排 (${p.itinerary.length}项):</strong>
+              <ul class="itinerary-list">
+                ${p.itinerary.map(i => `
+                  <li>
+                    <span class="itinerary-time">${escapeHtml(i.time)}</span>
+                    <div>
+                      <div style="font-weight:500;">${escapeHtml(i.activity)}</div>
+                      ${i.description ? `<div style="color:var(--text-light);font-size:0.85rem;">${escapeHtml(i.description)}</div>` : ''}
+                    </div>
+                  </li>
+                `).join('')}
+              </ul>
+            </div>
+          ` : '<p style="color:var(--text-light);font-size:0.9rem;margin-top:0.5rem;">暂无行程安排</p>'}
+          <div class="card-actions">
+            <button class="btn btn-sm btn-primary" onclick="openPlanModal('${p.id}')">✏️ 编辑</button>
+            <button class="btn btn-sm btn-outline" onclick="togglePrivacy('${p.id}')">
+              ${p.is_public ? '🔒 设为私有' : '🌐 设为公开'}
+            </button>
+            <button class="btn btn-sm btn-danger" onclick="deletePlan('${p.id}')">🗑️ 删除</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function openPlanModal(planId) {
+      const plan = planId ? currentPlans.find(p => p.id === planId) : null;
+      const isEdit = !!plan;
+      const title = plan ? '编辑旅行计划' : '新建旅行计划';
+
+      const itineraryItems = plan?.itinerary?.length ? plan.itinerary : [{ time: '', activity: '', description: '' }];
+      const itineraryHtml = itineraryItems.map((i, idx) => `
+        <div class="dynamic-item">
+          <input type="time" class="form-input iti-time" value="${escapeHtml(i.time)}" placeholder="时间">
+          <input type="text" class="form-input iti-activity" value="${escapeHtml(i.activity)}" placeholder="活动内容">
+          <button type="button" class="dynamic-item-remove" onclick="this.parentElement.remove()">×</button>
+        </div>
+        <input type="text" class="form-input iti-desc" style="margin-left:100px;margin-bottom:0.5rem;width:calc(100% - 136px);" value="${escapeHtml(i.description)}" placeholder="描述（可选）">
+      `).join('');
+
+      const modal = openModal(`
+        <div class="modal">
+          <div class="modal-header">
+            <h3 class="modal-title">${title}</h3>
+            <button class="modal-close" data-close-modal>×</button>
+          </div>
+          <div class="modal-body">
+            <div class="form-group">
+              <label class="form-label">📝 计划标题 *</label>
+              <input type="text" class="form-input" id="plan-title" value="${escapeHtml(plan?.title || '')}" placeholder="例如：日本关西7日游">
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">📍 目的地 *</label>
+                <input type="text" class="form-input" id="plan-dest" value="${escapeHtml(plan?.destination || '')}" placeholder="例如：日本大阪">
+              </div>
+              <div class="form-group">
+                <label class="form-label">🔒 公开/私有</label>
+                <div class="toggle-wrapper" style="padding-top:0.5rem;">
+                  <label class="toggle-switch">
+                    <input type="checkbox" id="plan-public" ${plan?.is_public ? 'checked' : ''}>
+                    <span class="toggle-slider"></span>
+                  </label>
+                  <span id="plan-public-label">${plan?.is_public ? '公开可见' : '仅自己可见'}</span>
+                </div>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">📅 开始日期 *</label>
+                <input type="date" class="form-input" id="plan-start" value="${plan?.start_date || ''}">
+              </div>
+              <div class="form-group">
+                <label class="form-label">📅 结束日期</label>
+                <input type="date" class="form-input" id="plan-end" value="${plan?.end_date || ''}">
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">🌐 纬度</label>
+                <input type="number" step="0.0001" class="form-input" id="plan-lat" value="${plan?.location?.latitude || ''}" placeholder="例如：34.6937">
+              </div>
+              <div class="form-group">
+                <label class="form-label">🌐 经度</label>
+                <input type="number" step="0.0001" class="form-input" id="plan-lng" value="${plan?.location?.longitude || ''}" placeholder="例如：135.5023">
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">📋 行程安排</label>
+              <div id="itinerary-container">${itineraryHtml}</div>
+              <button type="button" class="btn btn-outline btn-sm" style="margin-top:0.5rem;" onclick="addItineraryItem()">➕ 添加行程</button>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-outline" data-close-modal>取消</button>
+            <button class="btn btn-primary" onclick="savePlan('${planId || ''}')">保存</button>
+          </div>
+        </div>
+      `);
+
+      const pubCheckbox = modal.querySelector('#plan-public');
+      const pubLabel = modal.querySelector('#plan-public-label');
+      pubCheckbox.addEventListener('change', () => {
+        pubLabel.textContent = pubCheckbox.checked ? '公开可见' : '仅自己可见';
+      });
+    }
+
+    function addItineraryItem() {
+      const container = document.getElementById('itinerary-container');
+      const div = document.createElement('div');
+      div.innerHTML = `
+        <div class="dynamic-item">
+          <input type="time" class="form-input iti-time" placeholder="时间">
+          <input type="text" class="form-input iti-activity" placeholder="活动内容">
+          <button type="button" class="dynamic-item-remove" onclick="this.parentElement.nextElementSibling.remove();this.parentElement.remove();">×</button>
+        </div>
+        <input type="text" class="form-input iti-desc" style="margin-left:100px;margin-bottom:0.5rem;width:calc(100% - 136px);" placeholder="描述（可选）">
+      `;
+      container.appendChild(div);
+    }
+
+    async function savePlan(planId) {
+      const title = document.getElementById('plan-title').value.trim();
+      const destination = document.getElementById('plan-dest').value.trim();
+      const startDate = document.getElementById('plan-start').value;
+      const endDate = document.getElementById('plan-end').value;
+      const lat = parseFloat(document.getElementById('plan-lat').value) || 0;
+      const lng = parseFloat(document.getElementById('plan-lng').value) || 0;
+      const isPublic = document.getElementById('plan-public').checked;
+
+      if (!title || !destination || !startDate) {
+        showToast('请填写必填项（标题、目的地、开始日期）', 'error');
+        return;
+      }
+
+      const itiItems = document.querySelectorAll('#itinerary-container .dynamic-item');
+      const itiDescs = document.querySelectorAll('#itinerary-container .iti-desc');
+      const itinerary = [];
+      itiItems.forEach((item, idx) => {
+        const time = item.querySelector('.iti-time').value;
+        const activity = item.querySelector('.iti-activity').value.trim();
+        const desc = itiDescs[idx]?.value.trim() || '';
+        if (time || activity) {
+          itinerary.push({ time, activity, description: desc });
+        }
+      });
+
+      const data = {
+        title, destination, start_date: startDate, end_date: endDate,
+        location: { name: destination, latitude: lat, longitude: lng },
+        itinerary, is_public: isPublic
+      };
+
+      try {
+        if (planId) {
+          await API.put(`/api/plans/${planId}`, data);
+          showToast('更新成功');
+        } else {
+          await API.post('/api/plans', data);
+          showToast('创建成功');
+        }
+        closeModal();
+        loadPlans();
+      } catch (e) {
+        showToast('保存失败: ' + e.message, 'error');
+      }
+    }
+
+    async function togglePrivacy(id) {
+      try {
+        await API.post(`/api/plans/${id}/privacy`, {});
+        showToast('切换成功');
+        loadPlans();
+      } catch (e) {
+        showToast('切换失败: ' + e.message, 'error');
+      }
+    }
+
+    async function deletePlan(id) {
+      if (!confirm('确定要删除此旅行计划吗？关联的游记也会被删除，此操作不可恢复。')) return;
+      try {
+        await API.delete(`/api/plans/${id}`);
+        showToast('删除成功');
+        loadPlans();
+      } catch (e) {
+        showToast('删除失败: ' + e.message, 'error');
+      }
+    }
+
+    function resetFilters() {
+      document.getElementById('search-dest').value = '';
+      document.getElementById('search-date').value = '';
+      document.getElementById('filter-scope').value = 'all';
+      loadPlans();
+    }
+
+    let searchTimer;
+    document.getElementById('search-dest').addEventListener('input', () => {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(loadPlans, 300);
+    });
+    document.getElementById('search-date').addEventListener('change', loadPlans);
+    document.getElementById('filter-scope').addEventListener('change', loadPlans);
+
+    loadPlans();
+  </script>
+</body>
+</html>
