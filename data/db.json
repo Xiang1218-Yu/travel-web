@@ -12,9 +12,9 @@
         "longitude": 0
       },
       "itinerary": null,
-      "is_public": false,
+      "is_public": true,
       "created_at": "",
-      "updated_at": "2026-08-17T09:53:30+08:00"
+      "updated_at": "2026-08-17T09:53:32+08:00"
     }
   ],
   "diaries": null
