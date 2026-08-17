@@ -1,3 +1,3 @@
 package main
 
-func changesVisibility(p planPatch) bool { return p.IsPublic }
+func changesVisibility(p planPatch) bool { return p.IsPublic != nil }
