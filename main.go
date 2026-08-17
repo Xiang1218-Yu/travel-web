@@ -208,41 +208,24 @@ func getPlan(w http.ResponseWriter, r *http.Request, id string) {
 }
 
 func updatePlan(w http.ResponseWriter, r *http.Request, id string) {
-	var updates TravelPlan
-	if err := parseJSON(r, &updates); err != nil {
+	patch, err := decodePlanPatch(r)
+	if err != nil {
 		writeError(w, http.StatusBadRequest, "无效的请求数据")
 		return
 	}
-
 	dbMutex.Lock()
 	defer dbMutex.Unlock()
-
-	for i, p := range db.Plans {
-		if p.ID == id {
-			if updates.Title != "" {
-				db.Plans[i].Title = updates.Title
-			}
-			if updates.Destination != "" {
-				db.Plans[i].Destination = updates.Destination
-			}
-			if updates.StartDate != "" {
-				db.Plans[i].StartDate = updates.StartDate
-			}
-			if updates.EndDate != "" {
-				db.Plans[i].EndDate = updates.EndDate
-			}
-			if updates.Location.Name != "" || updates.Location.Latitude != 0 || updates.Location.Longitude != 0 {
-				db.Plans[i].Location = updates.Location
-			}
-			if updates.Itinerary != nil {
-				db.Plans[i].Itinerary = updates.Itinerary
-			}
-			db.Plans[i].IsPublic = updates.IsPublic
-			db.Plans[i].UpdatedAt = time.Now().Format(time.RFC3339)
-			saveDBLocked()
-			writeJSON(w, http.StatusOK, db.Plans[i])
+	for i := range db.Plans {
+		if db.Plans[i].ID != id {
+			continue
+		}
+		db.Plans[i] = applyPlanPatch(db.Plans[i], patch, time.Now())
+		if err := saveDBLocked(); err != nil {
+			writeError(w, http.StatusInternalServerError, "保存旅行计划失败")
 			return
 		}
+		writeJSON(w, http.StatusOK, db.Plans[i])
+		return
 	}
 	writeError(w, http.StatusNotFound, "旅行计划不存在")
 }
